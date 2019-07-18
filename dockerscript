@@ -1,0 +1,39 @@
+echo "Insert Imagename:"
+read imagename
+echo "Insert Image Tag:"
+read tag
+
+imagenametag=$imagename
+imagenametag+=":"
+imagenametag+=$tag
+echo $imagenametag
+
+repo=$imagename
+ecruri=<Your AWS ECR URI>
+
+IMAGE_META="$( aws ecr describe-images --repository-name=$repo 2> /dev/null )"
+if [[ $IMAGE_META != '' ]]; then
+  echo "Repository already exists!"
+  IMAGE_META_1="$( aws ecr describe-images --repository-name=$repo --image-ids=imageTag=$tag 2> /dev/null )"
+  if [[ $? == 0 ]]; then
+      IMAGE_TAGS="$( echo ${IMAGE_META_1} | jq '.imageDetails[0].imageTags[0]' -r )"
+      echo "$repo:$tag already exists. Change the tag (:$tag)"
+      exit 1
+  fi
+else
+  echo "Creating new repository: $repo"
+  aws ecr create-repository --repository-name $repo
+  echo "New Repository Created! (- $repo)"
+fi
+
+sudo docker build -t $imagenametag .
+echo "Docker Image Created!"
+
+logintoken="$(aws ecr get-login --no-include-email --region us-east-2)"
+sudo $logintoken
+sudo docker tag $imagenametag $ecruri/$imagenametag
+sudo docker push $ecruri/$imagenametag
+
+echo "----------------"
+echo "Successfully pushed to ECR Repository: $repo."
+echo "Copy the Image URI to paste it in cluster container: $ecruri/$imagenametag"
